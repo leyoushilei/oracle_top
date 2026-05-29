@@ -1,13 +1,29 @@
-需要设置环境变量 export PATH=$ORACLE_HOME/perl/bin:$PATH
-需要设置环境变量 export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
+# Oracle TOP Monitor
 
-# 基本使用
-#perl oracle_top.pl
-# 指定刷新间隔和运行次数
-#perl oracle_top.pl -i 3 -c 10
-# 输出到文件（追加模式）
-#perl oracle_top.pl -o /tmp/monitor.log
-# 同时指定刷新间隔和输出文件
-#perl oracle_top.pl -i 5 -o monitor.txt
-# 完整参数示例
-#perl oracle_top.pl -interval 2 -count 20 -top 10 -output /var/log/oracle_top.log
+一个基于 Perl 语言编写的轻量级、跨平台的 Oracle 数据库进程性能监控工具。它能将操作系统的进程（如 CPU、内存占用情况）实时与 Oracle 数据库的会话（Session）进行关联映射，帮助 DBA 和运维人员快速定位导致系统 CPU 飙升的“罪魁祸首”及对应的 SQL 语句。
+
+---
+
+## 核心特性
+
+* 📊 **实时进程映射**：将 OS 级别的 `PID` 与 Oracle 的 `SID`、`SERIAL#` 以及 `SQL_ID` 实时关联。
+* 📈 **资源排序**：基于系统进程的 CPU 使用率自动降序排列，直观展示 Top 消耗者。
+* 💾 **双通道输出**：支持终端（Terminal）实时动态刷新，并可同步追加保存到本地日志文件。
+* ⏱️ **灵活配置**：支持自定义刷新频率（Interval）、运行次数（Count）和展示进程数量（Top N）。
+* 🛑 **安全退出**：平滑捕获 `Ctrl+C` 信号，确保优雅关闭数据库连接和文件句柄。
+
+---
+
+## 前置条件与环境准备
+
+在运行该脚本前，请确保当前机器已安装并配置好 Oracle 客户端环境（包含数据库驱动），并设置好相关的环境变量。
+
+请根据您的 Oracle 安装路径，在终端执行以下环境变量配置：
+
+```bash
+# 将 Oracle 自带的 Perl 路径加入到 PATH 中（确保包含 DBI 和 DBD::Oracle 模块）
+export PATH=$ORACLE_HOME/perl/bin:$PATH
+
+# 配置动态链接库路径以支持数据库连接
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
+
