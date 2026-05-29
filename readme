@@ -1,6 +1,8 @@
 # Oracle TOP Monitor
 
-一个基于 Perl 语言编写的轻量级、跨平台的 Oracle 数据库进程性能监控工具。它能将操作系统的进程（如 CPU、内存占用情况）实时与 Oracle 数据库的会话（Session）进行关联映射，帮助 DBA 和运维人员快速定位导致系统 CPU 飙升的“罪魁祸首”及对应的 SQL 语句。
+一个基于 Perl 语言编写的轻量级、跨平台的 Oracle 数据库进程性能监控工具。
+它能将操作系统的进程（如 CPU、内存占用情况）实时与 Oracle 数据库的会话（Session）进行关联映射，
+帮助 DBA 和运维人员快速定位导致系统 CPU 飙升的“罪魁祸首”及对应的 SQL 语句。
 
 ---
 
@@ -27,3 +29,42 @@ export PATH=$ORACLE_HOME/perl/bin:$PATH
 # 配置动态链接库路径以支持数据库连接
 export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
 
+
+短参数,长参数,默认值,参数说明
+-i,-interval,5,监控界面刷新间隔时间（单位：秒）
+-c,-count,-1,脚本运行的迭代次数（-1 表示无限循环刷新）
+-n,-top,15,界面显示的 Top 进程数量限制
+-o,-output,无,指定输出文件的路径（采用追加模式保存）
+-h,-help,无,显示帮助信息
+
+使用示例
+1. 基本使用（使用默认参数）
+每 5 秒刷新一次，持续运行，展示 Top 15 进程：
+perl oracle_top.pl
+2. 指定刷新间隔和运行次数
+每 3 秒刷新一次，运行 10 次后自动退出：
+perl oracle_top.pl -i 3 -c 10
+3. 将监控数据持久化到文件（追加模式）
+perl oracle_top.pl -o /tmp/monitor.log
+4. 混合搭配：指定刷新间隔与输出文件
+perl oracle_top.pl -i 5 -o monitor.txt
+5. 完整参数复杂示例
+每 2 秒刷新一次，共运行 20 次，仅展示 CPU 消耗最高的前 10 个进程，并把日志记录到 /var/log/oracle_top.log：
+perl oracle_top.pl -interval 2 -count 20 -top 10 -output /var/log/oracle_top.log
+
+输出界面预览
+执行后，您将看到类似如下的格式化清爽界面：
+==========================================================================================
+TIMESTAMP: 2026-05-29 12:00:00 | Run #1
+==========================================================================================
+PID      CPU%   %MEM   COMMAND              | ora-USER     ora-SID  ora-serial#  ora-sql_id     
+------------------------------------------------------------------------------------------
+12345    45.2   2.1    oracleORCL (LOCAL=NO | APP_USER     142      53921        7v9wma2x1n8pz  
+12346    12.0   1.5    oracleORCL (LOCAL=NO | REPORT_SYS   15       1243         a5k98fn273hz1  
+12389    0.5    0.8    oracleORCL (PMON)    | N/A          N/A      N/A          N/A            
+==========================================================================================
+Stats: Total processes: 15, Oracle sessions: 2
+Next refresh: in 5 seconds
+
+许可证
+MIT License
