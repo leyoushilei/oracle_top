@@ -22,18 +22,12 @@
 在运行该脚本前，请确保当前机器已安装并配置好 Oracle 客户端环境（包含数据库驱动），并设置好相关的环境变量。
 
 请根据您的 Oracle 安装路径，在终端执行以下环境变量配置：
-
-```bash
 # 将 Oracle 自带的 Perl 路径加入到 PATH 中（确保包含 DBI 和 DBD::Oracle 模块）
 export PATH=$ORACLE_HOME/perl/bin:$PATH
-
 # 配置动态链接库路径以支持数据库连接
 export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
 
-```
-
 ---
-
 ## 参数配置说明
 
 | 短参数 | 长参数 | 默认值 | 参数说明 |
@@ -49,53 +43,24 @@ export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
 ## 使用示例
 
 ### 1. 基本使用（使用默认参数）
-
 每 5 秒刷新一次，持续运行，展示 Top 15 进程：
-
-```bash
 perl oratop.pl
-
-```
-
 ### 2. 指定刷新间隔和运行次数
-
 每 3 秒刷新一次，运行 10 次后自动退出：
-
-```bash
 perl oratop.pl -i 3 -c 10
-
-```
-
 ### 3. 将监控数据持久化到文件（追加模式）
-
-```bash
 perl oratop.pl -o /tmp/monitor.log
-
-```
-
 ### 4. 混合搭配：指定刷新间隔与输出文件
-
-```bash
 perl oratop.pl -i 5 -o monitor.txt
-
-```
-
 ### 5. 完整参数复杂示例
-
 每 2 秒刷新一次，共运行 20 次，仅展示 CPU 消耗最高的前 10 个进程，并把日志记录到 `/var/log/oracle_top.log`：
-
-```bash
 perl oratop.pl -interval 2 -count 20 -top 10 -output /var/log/oracle_top.log
-
-```
 
 ---
 
 ## 输出界面预览
 
 执行后，您将看到类似如下格式化的清爽且信息丰富的诊断界面：
-
-```text
 =======================================================================================================================================
 TIMESTAMP: 2026-07-17 16:04:37 | Run #14
 =======================================================================================================================================
@@ -116,13 +81,10 @@ PID      CPU%  %MEM  COMMAND          | ora-USER     SID    SERIAL# STATUS   ELA
 Stats: Total active OS processes: 15, Mapped Oracle sessions: 5
 Next refresh: in 5 seconds
 
-```
 
 > **指示说明**：
 > * **`ora-USER`**: 显示会话所有者。若为未绑定活跃会话的数据库后台进程则明确标注为 `SYS_BG`，非 Oracle 进程标注为 `NON_ORACLE`。
 > * **`ELAPSED_S` / `CURRENT EVENT**`: 仅对映射成功的 Oracle 会话显示其当前的真实等待事件和当前状态耗时，无“张冠李戴”的乱入信息。
-> 
-> 
 
 ---
 
