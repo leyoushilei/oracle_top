@@ -1,16 +1,21 @@
-# Oracle TOP Monitor
+好的，按照您提供的风格和排版结构，并融合了最新 v4 版本的技术特性与指标，为您整理了一份兼具专业感与可读性的官方 `README.md`。
+
+---
+
+# Oracle OS Top Process Monitor (oratop)
 
 一个基于 Perl 语言编写的轻量级、跨平台的 Oracle 数据库进程性能监控工具。
 它能将操作系统的进程（如 CPU、内存占用情况）实时与 Oracle 数据库的会话（Session）进行关联映射，
-帮助 DBA 和运维人员快速定位导致系统 CPU 飙升的“罪魁祸首”及对应的 SQL 语句。
+帮助 DBA 和运维人员在系统负载飙升时，快速定位“罪魁祸首”的 OS 进程、会话状态以及对应的 SQL 语句。
 
 ---
 
 ## 核心特性
 
 * 📊 **实时进程映射**：将 OS 级别的 `PID` 与 Oracle 的 `SID`、`SERIAL#` 以及 `SQL_ID` 实时关联。
-* 📈 **资源排序**：基于系统进程的 CPU 使用率自动降序排列，直观展示 Top 消耗者。
-* 💾 **双通道输出**：支持终端（Terminal）实时动态刷新，并可同步追加保存到本地日志文件。
+* 📈 **资源状态洞察**：支持基于系统进程的 CPU 使用率自动降序排列，并新增会话状态（`STATUS`）、执行耗时（`ELAPSED_S`）及当前等待事件（`CURRENT EVENT`）的深度展示。
+* ⚡ **零共享池污染**：采用动态语句句柄缓存机制（Statement Cache）与全绑定变量设计，即使 OS 的 PID 频繁变化也绝不产生硬解析，完全避免压垮 Oracle 共享池。
+* 💾 **双通道输出与自愈**：支持终端（Terminal）实时动态刷新，并可同步追加保存到本地日志文件。内置断线重连（Failover）与缓存自动清理机制。
 * ⏱️ **灵活配置**：支持自定义刷新频率（Interval）、运行次数（Count）和展示进程数量（Top N）。
 * 🛑 **安全退出**：平滑捕获 `Ctrl+C` 信号，确保优雅关闭数据库连接和文件句柄。
 
@@ -29,42 +34,102 @@ export PATH=$ORACLE_HOME/perl/bin:$PATH
 # 配置动态链接库路径以支持数据库连接
 export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
 
+```
 
-短参数,长参数,默认值,参数说明
--i,-interval,5,监控界面刷新间隔时间（单位：秒）
--c,-count,-1,脚本运行的迭代次数（-1 表示无限循环刷新）
--n,-top,15,界面显示的 Top 进程数量限制
--o,-output,无,指定输出文件的路径（采用追加模式保存）
--h,-help,无,显示帮助信息
+---
 
-使用示例
-1. 基本使用（使用默认参数）
+## 参数配置说明
+
+| 短参数 | 长参数 | 默认值 | 参数说明 |
+| --- | --- | --- | --- |
+| `-i` | `-interval` | `5` | 监控界面刷新间隔时间（单位：秒） |
+| `-c` | `-count` | `-1` | 脚本运行的迭代次数（`-1` 表示无限循环刷新） |
+| `-n` | `-top` | `15` | 界面显示的 Top 进程数量限制 |
+| `-o` | `-output` | 无 | 指定输出文件的路径（采用追加模式保存） |
+| `-h` | `-help` | 无 | 显示帮助信息 |
+
+---
+
+## 使用示例
+
+### 1. 基本使用（使用默认参数）
+
 每 5 秒刷新一次，持续运行，展示 Top 15 进程：
-perl oracle_top.pl
-2. 指定刷新间隔和运行次数
-每 3 秒刷新一次，运行 10 次后自动退出：
-perl oracle_top.pl -i 3 -c 10
-3. 将监控数据持久化到文件（追加模式）
-perl oracle_top.pl -o /tmp/monitor.log
-4. 混合搭配：指定刷新间隔与输出文件
-perl oracle_top.pl -i 5 -o monitor.txt
-5. 完整参数复杂示例
-每 2 秒刷新一次，共运行 20 次，仅展示 CPU 消耗最高的前 10 个进程，并把日志记录到 /var/log/oracle_top.log：
-perl oracle_top.pl -interval 2 -count 20 -top 10 -output /var/log/oracle_top.log
 
-输出界面预览
-执行后，您将看到类似如下的格式化清爽界面：
-==========================================================================================
-TIMESTAMP: 2026-05-29 12:00:00 | Run #1
-==========================================================================================
-PID      CPU%   %MEM   COMMAND              | ora-USER     ora-SID  ora-serial#  ora-sql_id     
-------------------------------------------------------------------------------------------
-12345    45.2   2.1    oracleORCL (LOCAL=NO | APP_USER     142      53921        7v9wma2x1n8pz  
-12346    12.0   1.5    oracleORCL (LOCAL=NO | REPORT_SYS   15       1243         a5k98fn273hz1  
-12389    0.5    0.8    oracleORCL (PMON)    | N/A          N/A      N/A          N/A            
-==========================================================================================
-Stats: Total processes: 15, Oracle sessions: 2
+```bash
+perl oratop.pl
+
+```
+
+### 2. 指定刷新间隔和运行次数
+
+每 3 秒刷新一次，运行 10 次后自动退出：
+
+```bash
+perl oratop.pl -i 3 -c 10
+
+```
+
+### 3. 将监控数据持久化到文件（追加模式）
+
+```bash
+perl oratop.pl -o /tmp/monitor.log
+
+```
+
+### 4. 混合搭配：指定刷新间隔与输出文件
+
+```bash
+perl oratop.pl -i 5 -o monitor.txt
+
+```
+
+### 5. 完整参数复杂示例
+
+每 2 秒刷新一次，共运行 20 次，仅展示 CPU 消耗最高的前 10 个进程，并把日志记录到 `/var/log/oracle_top.log`：
+
+```bash
+perl oratop.pl -interval 2 -count 20 -top 10 -output /var/log/oracle_top.log
+
+```
+
+---
+
+## 输出界面预览
+
+执行后，您将看到类似如下格式化的清爽且信息丰富的诊断界面：
+
+```text
+=======================================================================================================================================
+TIMESTAMP: 2026-07-17 16:04:37 | Run #14
+=======================================================================================================================================
+PID      CPU%  %MEM  COMMAND          | ora-USER     SID    SERIAL# STATUS   ELAPSED_S   SQL_ID         CURRENT EVENT
+---------------------------------------------------------------------------------------------------------------------------------------
+3086     1.4   2.2   oracle_3086_orc  | SYS          271    59526   INACTIVE 1           NONE           SQL*Net message from clie
+1737     1.0   2.8   gnome-shell      | NON_ORACLE   N/A    N/A     N/A      -           N/A            N/A
+2456     0.8   0.8   ora_vktm_orcl    | SYS_BG       239    31371   ACTIVE   164         NONE           VKTM Logical Idle Wait
+3085     0.7   0.2   oratop           | NON_ORACLE   N/A    N/A     N/A      -           N/A            N/A
+2532     0.6   4.4   ora_mmon_orcl    | SYS_BG       252    15844   ACTIVE   163         NONE           rdbms ipc message
+1101     0.3   0.4   tuned            | NON_ORACLE   N/A    N/A     N/A      -           N/A            N/A
+2588     0.3   2.3   ora_cjq0_orcl    | SYS_BG       30     38370   ACTIVE   156         NONE           rdbms ipc message
+1522     0.2   0.2   gnome-session-b  | NON_ORACLE   N/A    N/A     N/A      -           N/A            N/A
+2883     0.2   0.4   perl             | NON_ORACLE   N/A    N/A     N/A      -           N/A            N/A
+1        0.2   0.1   systemd          | NON_ORACLE   N/A    N/A     N/A      -           N/A            N/A
+2546     0.2   1.8   ora_m000_orcl    | SYS_BG       19     51336   ACTIVE   160         NONE           class slave wait
+=======================================================================================================================================
+Stats: Total active OS processes: 15, Mapped Oracle sessions: 5
 Next refresh: in 5 seconds
 
-许可证
+```
+
+> **指示说明**：
+> * **`ora-USER`**: 显示会话所有者。若为未绑定活跃会话的数据库后台进程则明确标注为 `SYS_BG`，非 Oracle 进程标注为 `NON_ORACLE`。
+> * **`ELAPSED_S` / `CURRENT EVENT**`: 仅对映射成功的 Oracle 会话显示其当前的真实等待事件和当前状态耗时，无“张冠李戴”的乱入信息。
+> 
+> 
+
+---
+
+## 许可证
+
 MIT License
