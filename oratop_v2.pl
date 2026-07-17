@@ -12,10 +12,10 @@ $SIG{INT} = sub {
 };
 
 # ==================== Command Line Arguments ====================
-my $interval = 5;      # Default refresh interval (seconds)
-my $count    = -1;     # Default unlimited runs (-1 = infinite)
-my $top_num  = 15;     # Default number of processes to show
-my $output_file;       # Output file name
+my $interval = 5;      # 刷新间隔 (秒)
+my $count    = -1;     # 执行次数 (-1 为无限)
+my $top_num  = 15;     # 显示的 Top 进程数
+my $output_file;       # 输出文件名
 
 for (my $i = 0; $i < @ARGV; $i++) {
     if ($ARGV[$i] eq '-i' || $ARGV[$i] eq '-interval') {
@@ -58,19 +58,35 @@ if ($@) {
     die "Initial database connection failed: $@\n";
 }
 
-# ==================== Prepare Statement (Once Only!) ====================
-# 行列转换解析方案，完美支持单字符串绑定，绝不污染 Shared Pool
-my $sql = q{
-    SELECT p.spid, s.sid, s.serial#, s.username, s.status, s.event, s.sql_id, s.last_call_et
-    FROM v$session s
-    JOIN v$process p ON s.paddr = p.addr
-    WHERE p.spid IN (
-        SELECT regexp_substr(?, '[^,]+', 1, LEVEL)
-        FROM dual
-        CONNECT BY regexp_substr(?, '[^,]+', 1, LEVEL) IS NOT NULL
-    )
-};
-my $sth = $dbh->prepare($sql);
+# ==================== Statement Cache Mechanism ====================
+# 核心优化：动态占位符句柄缓存，既避开硬解析，又避开了 CONNECT BY 的低效
+my %STH_CACHE;
+sub get_cached_sth {
+    my ($dbh_ptr, $num_params) = @_;
+    return $STH_CACHE{$num_params} if exists $STH_CACHE{$num_params};
+
+    # 根据传入的 PID 数量动态生成 (?,?,?)
+    my $placeholders = join(',', map { '?' } (1..$num_params));
+    
+    my $base_sql = qq{
+        SELECT p.spid, s.sid, s.serial#, s.username, s.status, s.event, s.sql_id, s.last_call_et
+        FROM v\$session s
+        JOIN v\$process p ON s.paddr = p.addr
+        WHERE p.spid IN ($placeholders)
+    };
+    
+    my $new_sth = $dbh_ptr->prepare($base_sql);
+    $STH_CACHE{$num_params} = $new_sth;
+    return $new_sth;
+}
+
+# 清空句柄缓存（用于断线重连后）
+sub clear_sth_cache {
+    foreach my $cached_sth (values %STH_CACHE) {
+        eval { $cached_sth->finish(); };
+    }
+    %STH_CACHE = ();
+}
 
 # ==================== Open Output File ====================
 my $file_handle;
@@ -78,7 +94,7 @@ if ($output_file) {
     open($file_handle, '>>', $output_file) or die "Cannot open output file '$output_file': $!";
 }
 
-print "Oracle Process Monitor - Optimized High-Performance Edition\n";
+print "Oracle Process Monitor - Ultimate High-Performance Edition (v4)\n";
 print "Press Ctrl+C to exit at any time\n\n";
 
 # ==================== Main Loop ====================
@@ -97,10 +113,8 @@ while (!$exit_flag) {
     # 断线重连机制
     if (!$dbh || !$dbh->ping) {
         print "Database connection lost. Trying to reconnect...\n";
-        eval {
-            $dbh = connect_db();
-            $sth = $dbh->prepare($sql);
-        };
+        clear_sth_cache();
+        eval { $dbh = connect_db(); };
         if ($@) {
             print "Reconnect failed: $@. Will retry next interval.\n";
             sleep $interval;
@@ -124,7 +138,8 @@ while (!$exit_flag) {
     my %pids;
     open my $PS, '-|', "ps -eo pid,pcpu,pmem,comm --no-headers --sort=-pcpu | head -$top_num" or die $!;
     while (<$PS>) {
-        my @fields = split;
+        $_ =~ s/^\s+//; # 去除行首空格
+        my @fields = split(/\s+/, $_);
         next unless @fields >= 4;
         my ($pid, $cpu, $mem, $cmd) = @fields;
         $pids{$pid} = { cpu => $cpu, mem => $mem, cmd => $cmd } if $pid =~ /^\d+$/;
@@ -136,33 +151,27 @@ while (!$exit_flag) {
 
     if (@pids) {
         eval {
-            # 将生成的逗号分隔字符串同时绑定到 SQL 中的两个占位符上
-            my $pid_string = join(',', @pids);
-            $sth->execute($pid_string, $pid_string);
+            # 获取对应参数数量的缓存句柄
+            my $current_sth = get_cached_sth($dbh, scalar(@pids));
+            $current_sth->execute(@pids);
 
-            while (my @row = $sth->fetchrow_array()) {
+            while (my @row = $current_sth->fetchrow_array()) {
                 my $spid        = $row[0];
-                my $sid         = $row[1];
-                my $serial      = $row[2];
-                my $user        = $row[3];
-                my $status      = $row[4];
-                my $event       = $row[5];
-                my $sql_id      = $row[6];
-                my $elapsed_sec = $row[7];
-
                 $sessions{$spid} = {
-                    sid         => $sid,
-                    serial      => $serial,
-                    user        => $user,
-                    status      => $status,
-                    event       => $event,
-                    sql_id      => $sql_id,
-                    elapsed_sec => $elapsed_sec
+                    sid         => $row[1],
+                    serial      => $row[2],
+                    user        => $row[3],
+                    status      => $row[4],
+                    event       => $row[5],
+                    sql_id      => $row[6],
+                    elapsed_sec => $row[7]
                 };
             }
         };
         if ($@) {
             print "Database query error: $@\n";
+            # 如果是内部句柄失效引起的报错，强制清理缓存以便下次重建
+            clear_sth_cache();
         }
     }
 
@@ -185,7 +194,7 @@ while (!$exit_flag) {
                $pid, $proc->{cpu}, $proc->{mem}, substr($cmd, 0, 16));
 
         if ($sess) {
-            # 正常映射到会话：输出真正的会话信息与真实的数据库事件
+            # 正常映射到会话
             $output_string .= sprintf("%-12s %-6s %-7s %-8s %-11s %-14s %-25s\n",
                    substr($sess->{user} || 'SYS_BG', 0, 12),
                    $sess->{sid}    || 'N/A',
@@ -197,11 +206,11 @@ while (!$exit_flag) {
         } else {
             # 未在 v$session 中关联上的进程处理
             if ($cmd =~ /ora_([a-z0-9]+)_/i) {
-                # 属于 Oracle 后台进程，但无会话映射：把进程名字写在 ora-USER 列，事件列保持纯净
+                # 属于 Oracle 后台进程但无活跃会话映射
                 $output_string .= sprintf("%-12s %-6s %-7s %-8s %-11s %-14s %-25s\n",
                        "ORA_BG [$1]", 'N/A', 'N/A', 'ACTIVE', '0', 'NONE', 'No Active Event');
             } else {
-                # 纯粹的非 Oracle 进程（如 mysqld, perl 等）
+                # 纯粹的非 Oracle 进程
                 $output_string .= sprintf("%-12s %-6s %-7s %-8s %-11s %-14s %-25s\n",
                        'NON_ORACLE', 'N/A', 'N/A', 'N/A', '-', 'N/A', 'N/A');
             }
@@ -228,14 +237,16 @@ while (!$exit_flag) {
 
     last if $exit_flag;
 
+    # 精确平滑的 Sleep 控制
     for (my $i = 0; $i < $interval && !$exit_flag; $i++) {
         sleep 1;
     }
 }
 
 # ==================== Cleanup and Exit ====================
+clear_sth_cache();
 if ($dbh) {
-    eval { $sth->finish(); $dbh->disconnect(); };
+    eval { $dbh->disconnect(); };
 }
 close($file_handle) if $output_file;
 print "Monitoring program has exited cleanly.\n";
